@@ -27,7 +27,7 @@
 
 - (IBAction)updateBlur:(UISlider *)sender
 {
-    self.blurView.blurRadius = sender.value;
+    self.blurView.options.blurRadius = sender.value;
 }
 
 @end
