@@ -35,8 +35,19 @@
 #import <Accelerate/Accelerate.h>
 
 
+@interface FXBlurViewOptions : NSObject
+
+@property (nonatomic, assign) NSUInteger iterations;
+@property (nonatomic, assign) NSTimeInterval updateInterval;
+@property (nonatomic, assign) CGFloat blurRadius;
+@property (nonatomic, assign) CGBlendMode tintBlendMode;
+
+@end
+
+
 @interface UIImage (FXBlurView)
 
+- (UIImage *)blurredImageWithTintColor:(UIColor *)tintColor options:(FXBlurViewOptions *)options;
 - (UIImage *)blurredImageWithRadius:(CGFloat)radius iterations:(NSUInteger)iterations tintColor:(UIColor *)tintColor;
 
 @end
@@ -50,9 +61,7 @@
 
 @property (nonatomic, getter = isBlurEnabled) BOOL blurEnabled;
 @property (nonatomic, getter = isDynamic) BOOL dynamic;
-@property (nonatomic, assign) NSUInteger iterations;
-@property (nonatomic, assign) NSTimeInterval updateInterval;
-@property (nonatomic, assign) CGFloat blurRadius;
 @property (nonatomic, strong) UIColor *tintColor;
+@property (nonatomic, readonly) FXBlurViewOptions *options;
 
 @end

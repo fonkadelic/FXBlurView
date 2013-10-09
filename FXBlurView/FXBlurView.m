@@ -42,15 +42,69 @@
 #endif
 
 
+@interface FXBlurViewOptions ()
+
+@property (nonatomic, weak) FXBlurView *blurView;
+@property (nonatomic, assign) BOOL iterationsSet;
+@property (nonatomic, assign) BOOL blurRadiusSet;
+@property (nonatomic, assign) BOOL tintBlendModeSet;
+
+@end
+
+
+@implementation FXBlurViewOptions
+
+- (instancetype)init
+{
+    if (self = [super init])
+    {
+        if (!_iterationsSet) _iterations = 3;
+        if (!_blurRadiusSet) _blurRadius = 40.0f;
+        if (!_tintBlendModeSet) _tintBlendMode = kCGBlendModePlusLighter;
+        self.updateInterval = _updateInterval;
+    }
+    return self;
+}
+
+- (void)setIterations:(NSUInteger)iterations
+{
+    _iterationsSet = YES;
+    _iterations = iterations;
+    [self.blurView setNeedsDisplay];
+}
+
+- (void)setBlurRadius:(CGFloat)blurRadius
+{
+    _blurRadiusSet = YES;
+    _blurRadius = blurRadius;
+    [self.blurView setNeedsDisplay];
+}
+
+- (void)setTintBlendMode:(CGBlendMode)tintBlendMode
+{
+    _tintBlendModeSet = YES;
+    _tintBlendMode = tintBlendMode;
+    [self.blurView setNeedsDisplay];
+}
+
+- (void)setUpdateInterval:(NSTimeInterval)updateInterval
+{
+    _updateInterval = updateInterval;
+    if (_updateInterval <= 0) _updateInterval = 1.0/60;
+}
+
+@end
+
+
 @implementation UIImage (FXBlurView)
 
-- (UIImage *)blurredImageWithRadius:(CGFloat)radius iterations:(NSUInteger)iterations tintColor:(UIColor *)tintColor
+- (UIImage *)blurredImageWithTintColor:(UIColor *)tintColor options:(FXBlurViewOptions *)options
 {
     //image must be nonzero size
     if (floorf(self.size.width) * floorf(self.size.height) <= 0.0f) return self;
     
     //boxsize must be an odd integer
-    uint32_t boxSize = radius * self.scale;
+    uint32_t boxSize = options.blurRadius * self.scale;
     if (boxSize % 2 == 0) boxSize ++;
     
     //create image buffers
@@ -72,7 +126,7 @@
     memcpy(buffer1.data, CFDataGetBytePtr(dataSource), bytes);
     CFRelease(dataSource);
     
-    for (NSUInteger i = 0; i < iterations; i++)
+    for (NSUInteger i = 0; i < options.iterations; i++)
     {
         //perform blur
         vImageBoxConvolve_ARGB8888(&buffer1, &buffer2, tempBuffer, 0, 0, boxSize, boxSize, NULL, kvImageEdgeExtend);
@@ -96,7 +150,7 @@
     if (tintColor && CGColorGetAlpha(tintColor.CGColor) > 0.0f)
     {
         CGContextSetFillColorWithColor(ctx, [tintColor colorWithAlphaComponent:0.25].CGColor);
-        CGContextSetBlendMode(ctx, kCGBlendModePlusLighter);
+        CGContextSetBlendMode(ctx, options.tintBlendMode);
         CGContextFillRect(ctx, CGRectMake(0, 0, buffer1.width, buffer1.height));
     }
     
@@ -107,6 +161,15 @@
     CGContextRelease(ctx);
     free(buffer1.data);
     return image;
+}
+
+- (UIImage *)blurredImageWithRadius:(CGFloat)radius iterations:(NSUInteger)iterations tintColor:(UIColor *)tintColor
+{
+    FXBlurViewOptions *options = [[FXBlurViewOptions alloc] init];
+    options.blurRadius = radius;
+    options.iterations = iterations;
+    
+    return [self blurredImageWithTintColor:tintColor options:options];
 }
 
 @end
@@ -130,6 +193,7 @@
 @property (nonatomic, assign) BOOL dynamicSet;
 @property (nonatomic, assign) BOOL blurEnabledSet;
 @property (nonatomic, strong) NSDate *lastUpdate;
+@property (nonatomic, strong) FXBlurViewOptions *options;
 
 - (UIImage *)snapshotOfSuperview:(UIView *)superview;
 
@@ -215,16 +279,15 @@
         {
             FXBlurView *view = self.views[i];
             if (view.blurEnabled && view.dynamic && view.window &&
-                (!view.lastUpdate || [view.lastUpdate timeIntervalSinceNow] < -view.updateInterval) &&
+                (!view.lastUpdate || [view.lastUpdate timeIntervalSinceNow] < -view.options.updateInterval) &&
                 !CGRectIsEmpty(view.bounds) && !CGRectIsEmpty(view.superview.bounds))
             {
                 self.updating = YES;
                 UIImage *snapshot = [view snapshotOfSuperview:view.superview];
                 dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
                     
-                    UIImage *blurredImage = [snapshot blurredImageWithRadius:view.blurRadius
-                                                                  iterations:view.iterations
-                                                                   tintColor:view.tintColor];
+                    UIImage *blurredImage = [snapshot blurredImageWithTintColor:view.tintColor
+                                                                        options:view.options];
                     dispatch_sync(dispatch_get_main_queue(), ^{
                         
                         //set image
@@ -274,11 +337,10 @@
 
 - (void)setUp
 {
-    if (!_iterationsSet) _iterations = 3;
-    if (!_blurRadiusSet) _blurRadius = 40.0f;
+    _options = [[FXBlurViewOptions alloc] init];
+    _options.blurView = self;
     if (!_dynamicSet) _dynamic = YES;
     if (!_blurEnabledSet) _blurEnabled = YES;
-    self.updateInterval = _updateInterval;
     
     unsigned int numberOfMethods;
     Method *methods = class_copyMethodList([UIView class], &numberOfMethods);
@@ -317,20 +379,6 @@
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
-- (void)setIterations:(NSUInteger)iterations
-{
-    _iterationsSet = YES;
-    _iterations = iterations;
-    [self setNeedsDisplay];
-}
-
-- (void)setBlurRadius:(CGFloat)blurRadius
-{
-    _blurRadiusSet = YES;
-    _blurRadius = blurRadius;
-    [self setNeedsDisplay];
-}
-
 - (void)setBlurEnabled:(BOOL)blurEnabled
 {
     _blurEnabledSet = YES;
@@ -357,12 +405,6 @@
             [self setNeedsDisplay];
         }
     }
-}
-
-- (void)setUpdateInterval:(NSTimeInterval)updateInterval
-{
-    _updateInterval = updateInterval;
-    if (_updateInterval <= 0) _updateInterval = 1.0/60;
 }
 
 - (void)setTintColor:(UIColor *)tintColor
@@ -407,9 +449,8 @@
         !CGRectIsEmpty(self.bounds) && !CGRectIsEmpty(self.superview.bounds))
     {
         UIImage *snapshot = [self snapshotOfSuperview:self.superview];
-        UIImage *blurredImage = [snapshot blurredImageWithRadius:self.blurRadius
-                                                      iterations:self.iterations
-                                                       tintColor:self.tintColor];
+        UIImage *blurredImage = [snapshot blurredImageWithTintColor:self.tintColor
+                                                            options:self.options];
         self.layer.contents = (id)blurredImage.CGImage;
         self.layer.contentsScale = blurredImage.scale;
     }
@@ -419,10 +460,10 @@
 {
     self.lastUpdate = [NSDate date];
     CGFloat scale = 0.5;
-    if (self.iterations > 0 && ([UIScreen mainScreen].scale > 1 || self.contentMode == UIViewContentModeScaleAspectFill))
+    if (self.options.iterations > 0 && ([UIScreen mainScreen].scale > 1 || self.contentMode == UIViewContentModeScaleAspectFill))
     {
-        CGFloat blockSize = 12.0f/self.iterations;
-        scale = blockSize/MAX(blockSize * 2, floor(self.blurRadius));
+        CGFloat blockSize = 12.0f/self.options.iterations;
+        scale = blockSize/MAX(blockSize * 2, floor(self.options.blurRadius));
     }
     CGSize size = self.bounds.size;
     size.width = ceilf(size.width * scale) / scale;
