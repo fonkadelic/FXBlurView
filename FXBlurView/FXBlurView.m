@@ -60,7 +60,7 @@
     {
         if (!_iterationsSet) _iterations = 3;
         if (!_blurRadiusSet) _blurRadius = 40.0f;
-        if (!_tintBlendModeSet) _tintBlendMode = kCGBlendModePlusLighter;
+        if (!_tintBlendModeSet) _tintBlendMode = kCGBlendModeLighten;
         self.updateInterval = _updateInterval;
     }
     return self;
